@@ -9,44 +9,66 @@ import random
 import math
 import time
 import json
+import sys
+import os
 
+def resource_path(relative_path):
+    """ Получает абсолютный путь для ресурсов в EXE и при разработке """
+    try:
+        base_path = sys._MEIPASS  # Для собранного EXE
+    except AttributeError:
+        base_path = os.path.abspath(".")  # Для запуска из исходного кода
 
-class MusicPlayer:
-    def __init__(self, file_path):
-        self.file_path = file_path
-        self.data, self.fs = sf.read(file_path, dtype='float32')
-        if len(self.data.shape) == 1:
-            self.data = np.column_stack((self.data, self.data))
-        self.is_playing = False
+    path = os.path.join(base_path, relative_path)
 
-    def play(self):
-        if not self.is_playing:
-            self.is_playing = True
-            Thread(target=self._play_loop, daemon=True).start()
+    return path
 
-    def _play_loop(self):
-        sd.play(self.data, self.fs, loop=True)
-        while self.is_playing:
-            sd.sleep(100)
+def load_audiofile(file_path):
+    global audio_data, sample_rate
+    data, fs = sf.read(file_path, dtype='float32')
+    if len(data.shape) == 1:
+        data = np.column_stack((data, data))
+    audio_data = data
+    sample_rate = fs
+    return data, fs
 
-    def stop(self):
-        self.is_playing = False
-        sd.stop()
+# Функция для воспроизведения в отдельном потоке
+def _play_loop():
+    global sound_fl
+    sd.play(audio_data, sample_rate, loop=True)
+    while sound_fl:
+        sd.sleep(100)
 
+# Воспроизведение фоновой музыки
+def play_audio(file_path=None):
+    global sound_fl
+    if file_path:
+        load_audiofile(file_path)
 
+    if audio_data is not None:
+        sound_fl = True
+        Thread(target=_play_loop, daemon=True).start()
+
+# Остановка воспроизведения фоновой музыки
+def stop_audio():
+    global sound_fl
+    sound_fl = False
+    sd.stop()
+
+# Переключение состояния воспроизведения
 def toggle_music():
-    if player.is_playing:
-        player.stop()
+    if sound_fl:
+        stop_audio()
     else:
-        player.play()
+        play_audio()
 
-
-player = MusicPlayer("D:/1111/YP/MagicSurvival/pythonProject/Sound/music.mp3")
-
+# Инициализация плеера
+music_path = resource_path(os.path.join("Sound", "music.mp3"))
 
 def klik_sound():
     if sound_fl == True:
-            Thread(target=lambda: playsound("D:/1111/YP/MagicSurvival/pythonProject/Sound/klik.mp3"), daemon=True).start()
+        klikk = resource_path(os.path.join("Sound", "klik.mp3"))
+        Thread(target=lambda: playsound(klikk), daemon=True).start()
 
 
 def but_e(event=None):  # окно правил игры
@@ -64,15 +86,15 @@ def but_e(event=None):  # окно правил игры
     t.place(x=550, y=800)
     y = Label(root1, text='Правила игры', font="Arial 32")
     y.place(x=600, y=10)
-    rules_text = """Игрок начинает с 100 единицами здоровья и должен продержаться 5 минут. Поражение наступает при достижении 0 HP. 
+    rules_text = """Игрок начинает с 100 единицами здоровья и должен продержаться 5 минут. Поражение наступает при достижении 0 HP. Игрок может перемещаться при помощи стрелок на клавиатуре.
 
-    С первой секунды появляются обычные противники (10 HP, 5 урона), а с 2:30 добавляются элитные (30 HP, 10 урона). 
+    С первой секунды появляются обычные противники (10 HP, 5 урона), а с 2:30 добавляются элитные (30 HP, 10 урона). Игрок автоматически отбивается при помощи различных способностей.
 
-    На старте доступна только основная атака: уровень 1 - 5 урона (перезарядка 1 сек), уровень 2 - 10 урона (0.75 сек), уровень 3 - 15 урона (0.75 сек). При повышении уровня можно получить новые способности: молния: уровень 1 - 15 урона по 2 противникам (перезарядка 3 сек), уровень 2 - 15 урона по 4 противникам (3 сек), уровень 3 - 30 урона по 4 противникам (3 сек) или взрывной снаряд: уровень 1 - 15 урона в области 125 пикселей (перезарядка 3 сек), уровень 2 - 15 урона в области 175 пикселей (3 сек), уровень 3 - 30 урона в области 175 пикселей (3 сек). Все способности срабатывают автоматически.
+    На старте доступна только основная атака: уровень 1 - 5 урона (перезарядка 1 сек), уровень 2 - 10 урона (0.75 сек), уровень 3 - 15 урона (0.75 сек). При повышении уровня можно получить новые способности: молния: уровень 1 - 15 урона по 2 противникам (перезарядка 3 сек), уровень 2 - 15 урона по 4 противникам (3 сек), уровень 3 - 30 урона по 4 противникам (3 сек) или взрывной снаряд: уровень 1 - 15 урона в области 125 пикселей (перезарядка 3 сек), уровень 2 - 15 урона в области 175 пикселей (3 сек), уровень 3 - 30 урона в области 175 пикселей (3 сек).
 
-    За обычных противников даётся 1 опыт, за элитных - 3. Максимальный уровень - 7, для каждого нового уровня требуется на 50 опыта больше. При повышении уровня можно выбрать улучшение существующей способности или новую способность (если их меньше двух).
+    За обычных противников даётся 1 опыт, за элитных - 3. Максимальный уровень - 7, для каждого нового уровня требуется на 50 опыта больше. При повышении уровня можно выбрать улучшение существующей способности или новую способность (если их меньше двух) в окне выбора способностей при помощи цифр "1" и "2" на клавиатуре.
 
-    В игре игрок может вызвать окно паузы нажав на кнопку esc на клавиатуре и в этом окне можно выключить музыку."""
+    В игре игрок может вызвать окно паузы нажав на кнопку "esc" на клавиатуре и в этом окне можно включить или выключить музыку."""
 
     canvas.create_text(130, 130, text=rules_text, font=('Arial', 20), anchor='nw', width=1300)
 
@@ -93,11 +115,9 @@ def but_h(event=None):  # окно рекордов
             {"name": " ", "score": " "},
             {"name": " ", "score": " "}
         ]
-
-        with open('D:/1111/YP/MagicSurvival/pythonProject/.venv/records.json', 'r') as f:  # Открываем файл
+        record_file = resource_path(os.path.join("records.json"))
+        with open(record_file, 'r') as f:  # Открываем файл
             records = json.load(f)
-            if not isinstance(records, list):
-                return default_records
 
             records.sort(key=lambda x: x.get('score', 0), reverse=True)  # Сортируем по убыванию рекорда
 
@@ -134,8 +154,7 @@ def but_h(event=None):  # окно рекордов
         score = record.get('score', 0)
         Label(root1, text=name, font="Arial 20").place(x=200, y=y_pos + 10)
         Label(root1, text=str(score), font="Arial 20").place(x=1100, y=y_pos + 10)
-        Button(root1, text='Выход в главное меню', font="Arial 32", command=lambda: (klik_sound(), exit_but_h())).place(
-            x=550, y=800)
+    Button(root1, text='Выход в главное меню', font="Arial 32", command=lambda: (klik_sound(), exit_but_h())).place(x=550, y=800)
 
 
 class Ability:
@@ -157,15 +176,15 @@ class Ability:
         return self.activate(enemies, current_time)
 
     def activate(self, enemies, current_time):
-        """Активация способности (должна быть переопределена в подклассах)"""
+        """Активация способности """
         return 0, 0
 
     def cleanup_effects(self, current_time):
-        """Очистка устаревших эффектов (должна быть переопределена в подклассах)"""
+        """Очистка устаревших эффектов """
         pass
 
     def upgrade(self):
-        """Улучшение способности (базовая реализация)"""
+        """Улучшение способности"""
         self.level += 1
 
     def can_activate(self, current_time):
@@ -255,7 +274,8 @@ class LightningAbility(Ability):
         ]
 
         if sound_fl == True:
-            Thread(target=lambda: playsound('D:/1111/YP/MagicSurvival/pythonProject/Sound/lighting.mp3'), daemon=True).start()
+            slighting = resource_path(os.path.join("Sound", "lighting.mp3"))
+            Thread(target=lambda: playsound(slighting), daemon=True).start()
         return self.canvas.create_line(points, fill='#00BFFF', width=2)
         pass
 
@@ -306,7 +326,8 @@ class ExplosiveShotAbility(Ability):
 
         bullet = self.canvas.create_oval(px - 8, py - 8, px + 8, py + 8, fill='orange', outline='darkorange', width=2)
         if sound_fl:
-            Thread(target=lambda: playsound('D:/1111/YP/MagicSurvival/pythonProject/Sound/shoot2.mp3'), daemon=True).start()
+            shhot2 = resource_path(os.path.join("Sound", "shoot2.mp3"))
+            Thread(target=lambda: playsound(shhot2), daemon=True).start()
         self.bullets.append({
             'id': bullet,
             'x': px,
@@ -415,7 +436,8 @@ class AutoShooter(Ability):
 
         bullet = self.canvas.create_oval(px - 5, py - 5, px + 5, py + 5, fill='blue')
         if sound_fl:
-            Thread(target=lambda: playsound('D:/1111/YP/MagicSurvival/pythonProject/Sound/shoot.mp3'), daemon=True).start()
+            shhot = resource_path(os.path.join("Sound", "shoot.mp3"))
+            Thread(target=lambda: playsound(shhot), daemon=True).start()
         self.bullets.append({
             'id': bullet,
             'dx': dx,
@@ -491,7 +513,7 @@ class Enemy:
         self.image_obj = canvas.create_image(self.x + self.size // 2, self.y + self.size // 2, image=self.img)
 
     def init_enemy_characteristics(self):
-        raise NotImplementedError("Subclasses must implement this method")
+        raise
 
     @staticmethod
     def create_enemy(enemy_type, canvas, screen_width, screen_height, size, player_coords):
@@ -612,7 +634,7 @@ class NormalEnemy(Enemy):
         self.xp_value = 1
         self.damage = 5
         self.type = "normal"
-        self.texture_enemy = "D:/1111/YP/MagicSurvival/pythonProject/Textures/Enemy1.jpg"
+        self.texture_enemy =resource_path(os.path.join("Textures", "Enemy1.jpg"))
 
 
 class EliteEnemy(Enemy):
@@ -621,7 +643,7 @@ class EliteEnemy(Enemy):
         self.hp = 30
         self.xp_value = 3
         self.damage = 10
-        self.texture_enemy = "D:/1111/YP/MagicSurvival/pythonProject/Textures/Enemy2.jpg"
+        self.texture_enemy = resource_path(os.path.join("Textures", "Enemy2.jpg"))
 
 
 def restart_game():
@@ -635,8 +657,9 @@ def record_menu(enemies_killed, restart_callback=None, exit_callback=None):  # �
 
     def save_record():
         player_name = name_entry.get().strip()
+        record_file = resource_path(os.path.join("records.json"))
         if player_name:
-            with open('D:/1111/YP/MagicSurvival/pythonProject/.venv/records.json', 'r') as f:
+            with open(record_file, 'r') as f:
                 records = json.load(f)
 
             records.append({
@@ -644,7 +667,7 @@ def record_menu(enemies_killed, restart_callback=None, exit_callback=None):  # �
                 'score': enemies_killed
             })
 
-            with open('D:/1111/YP/MagicSurvival/pythonProject/.venv/records.json', 'w') as f:
+            with open(record_file, 'w') as f:
                 json.dump(records, f, indent=4)
 
             root77.destroy()
@@ -681,8 +704,6 @@ def record_menu(enemies_killed, restart_callback=None, exit_callback=None):  # �
     Button(btn_frame, text="Подтвердить", font=("Arial", 18), command=lambda: (klik_sound(), save_record())).pack(
         side='left', padx=20)
 
-    root77.deiconify()
-
     root77.grab_set()
     root77.focus_set()
     name_entry.focus()
@@ -714,7 +735,8 @@ def game(event=None):
     elite_spawn_time = 180
     elite_spawn_chance = 0.4
     max_enemes = 20
-    playerq = Image.open("D:/1111/YP/MagicSurvival/pythonProject//Textures/player.jpg")
+    playyr=resource_path(os.path.join("Textures", "player.jpg"))
+    playerq = Image.open(playyr)
     playerq = playerq.resize((50, 50), Image.LANCZOS)
     player_img = ImageTk.PhotoImage(playerq)
 
@@ -751,10 +773,11 @@ def game(event=None):
     time_rect = canvas.create_rectangle(screen_width // 2 - 300, 10, screen_width // 2 - 100, 50, outline="black",
                                         fill="white")
     hp_rect = canvas.create_rectangle(30, screen_height - 70, 330, screen_height - 30, outline="black", fill="white")
-    game_start_time = time.time()
+
     time_text = canvas.create_text(screen_width // 2 - 200, 30, text="Время: 0:00", font="Arial 24", fill="black")
     hp_text = canvas.create_text(180, screen_height - 50, text=f"Здоровье: {hp}", font="Arial 24", fill="black")
 
+    game_start_time = time.time()
     is_paused = False
     pause_menu_items = []
     game_loop_id = None
@@ -765,7 +788,6 @@ def game(event=None):
         upgrade_time += time.time() - pause_start_time
         is_paused = True
         root2.unbind('<Escape>')
-        remove_pause_menu()
 
         overlay = canvas.create_rectangle(
             0, 0, screen_width, screen_height,
@@ -910,14 +932,14 @@ def game(event=None):
         root2.unbind('<Escape>')
         game_over = True
 
-        current_time = time.time() - game_start_time - total_paused_time
-        minutes = int(current_time) // 60
-        seconds = int(current_time) % 60
+        game_time = time.time() - game_start_time - total_paused_time
+        minutes = int(game_time) // 60
+        seconds = int(game_time) % 60
 
         overlay = canvas.create_rectangle(0, 0, screen_width, screen_height, fill="black", stipple="gray12")
         menu_frame = canvas.create_rectangle(screen_width // 2 - 250, screen_height // 2 - 300, screen_width // 2 + 250,
                                              screen_height // 2 + 275, fill="white", outline="black", width=3)
-        if current_time < 300:
+        if game_time < 300:
             game_over_text = canvas.create_text(screen_width // 2, screen_height // 2 - 225, text="Поражение",
                                                 font="Arial 40", fill="red")
         else:
@@ -944,19 +966,17 @@ def game(event=None):
                              command=lambda: record_menu(enemies_killed, restart_callback=restart_game))
         restart_btn.place(x=screen_width // 2 - 205, y=screen_height // 2 + 60)
 
-        return [overlay, menu_frame, game_over_text, time_game_over_rect, time_game_over_text, score_game_over_rect,
-                score_game_over_text, restart_btn, exit_btn]
 
     def check_game_over():
         nonlocal game_over
 
-        current_time = time.time() - game_start_time - total_paused_time + upgrade_time
-        if current_time >= 300 and not game_over:
-            game_over_menu_items = create_game_over_menu()
+        game_time = time.time() - game_start_time - total_paused_time + upgrade_time
+        if game_time >= 300 :
+            create_game_over_menu()
             return True
 
-        if hp <= 0 and not game_over:
-            game_over_menu_items = create_game_over_menu()
+        if hp <= 0 :
+            create_game_over_menu()
             return True
 
         return False
@@ -968,13 +988,8 @@ def game(event=None):
         def volume():
             nonlocal volume_btn, pause_menu_items
             global sound_fl
-            if sound_fl == True:
-                toggle_music()
-                sound_fl = False
-            else:
-                sound_fl = True
-                toggle_music()
             volume_btn.destroy()
+            toggle_music()
             if sound_fl == True:
                 volume_btn = Button(root2, text="Выключить звук", font="Arial 26", width=15,
                                     command=lambda: (klik_sound(), volume()))
@@ -985,9 +1000,9 @@ def game(event=None):
             pause_menu_items = [overlay, menu_frame, pause_text, time_pause_text, time_pause_rect, score_pause_rect,
                                 resume_btn, volume_btn, exit_btn, score_pause_text]
 
-        current_time = time.time() - game_start_time - total_paused_time
-        minutes = int(current_time) // 60
-        seconds = int(current_time) % 60
+        game_time = time.time() - game_start_time - total_paused_time
+        minutes = int(game_time) // 60
+        seconds = int(game_time) % 60
         overlay = canvas.create_rectangle(0, 0, screen_width, screen_height, fill="black", stipple="gray25")
         menu_frame = canvas.create_rectangle(screen_width // 2 - 210, screen_height // 2 - 300, screen_width // 2 + 210,
                                              screen_height // 2 + 300, fill="white", outline="black", width=3)
@@ -1045,11 +1060,10 @@ def game(event=None):
 
     def resume_game():  # Возобновление игры
         nonlocal is_paused, game_loop_id, pause_start_time, total_paused_time
-        if is_paused:
-            is_paused = False
-            total_paused_time += time.time() - pause_start_time
-            remove_pause_menu()
-            game_loop()
+        is_paused = False
+        total_paused_time += time.time() - pause_start_time
+        remove_pause_menu()
+        game_loop()
 
     def move_canvas(event):  # функция движения холста
         if is_paused or game_over:
@@ -1084,9 +1098,9 @@ def game(event=None):
         nonlocal last_spawn_time, elite_spawn_chance
         current_time = time.time()
         if current_time - last_spawn_time >= spawn_interval and len(enemies) < max_enemes:
-            current_game_time = current_time - game_start_time - total_paused_time + upgrade_time
+            game_time = current_time - game_start_time - total_paused_time + upgrade_time
 
-            if current_game_time > elite_spawn_time and random.random() < elite_spawn_chance:
+            if game_time > elite_spawn_time and random.random() < elite_spawn_chance:
                 enemies.append(
                     Enemy.create_enemy(
                         "elite",
@@ -1142,19 +1156,16 @@ def game(event=None):
 
         shooter.update(enemies, current_time)
         bullet_xp, bullet_kills = shooter.move_bullets(enemies)
-        enemies_killed += bullet_kills
-        xp += bullet_xp
 
         lightning_xp, lightning_kills = lightning.update(enemies, current_time)
         explosive_shot.update(enemies, current_time)
         explosive_xp, explosive_kills = explosive_shot.move_bullets(enemies)
 
-        enemies_killed += lightning_kills + explosive_kills
-        xp += lightning_xp + explosive_xp
+        enemies_killed += lightning_kills + explosive_kills + bullet_kills
+        xp += lightning_xp + explosive_xp + bullet_xp
         if xp >= xp_to_level:
             level += 1
             xp_to_level += 50
-            canvas.itemconfig(level_text, text=f"Уровень: {level} ({xp}/{xp_to_level} XP)")
             if level < 7:
                 if game_loop_id:
                     root2.after_cancel(game_loop_id)
@@ -1171,9 +1182,10 @@ def game(event=None):
             damage = enemy.move_towards_player(enemies, player_coords)
             damage_taken += damage
         if damage_taken > 0:
-            hp = max(0, hp - damage_taken)
+            hp =  hp - damage_taken
             if sound_fl == True:
-                Thread(target=lambda: playsound('D:/1111/YP/MagicSurvival/pythonProject/Sound/damage.mp3', block=False), daemon=True).start()
+                damages = resource_path(os.path.join("Sound", "damage.mp3"))
+                Thread(target=lambda: playsound(damages), daemon=True).start()
             canvas.itemconfig(hp_text, text=f"Здоровье: {hp}")
             if hp <= 0:
                 check_game_over()
@@ -1187,17 +1199,17 @@ def g_menu():
     global root
     root = Tk()
     root.attributes('-fullscreen', True)
+    root.title("Magic Survival")
     root.protocol("WM_DELETE_WINDOW", lambda: None)
     Label(text='Magic Survival', font="Arial 36").place(x=630, y=150)
     Button(text='Начать игру ', font="Arial 36", width=15, command=lambda: (klik_sound(), game())).place(x=570, y=250)
     Button(text='Правила игры', font="Arial 36", width=15, command=lambda: (klik_sound(), but_e())).place(x=570, y=350)
     Button(text='Рекорды', font="Arial 36", width=15, command=lambda: (klik_sound(), but_h())).place(x=570, y=450)
-    Button(text='Выход из игры', font="Arial 36", width=15, command=lambda: (klik_sound(), root.destroy())).place(x=570,
-                                                                                                                  y=550)
-
-    player.play()
+    Button(text='Выход из игры', font="Arial 36", width=15, command=lambda: (klik_sound(), root.destroy())).place(x=570,y=550)
     root.mainloop()
 
-
-sound_fl = True
+sound_fl = False
+audio_data = None
+sample_rate = None
+play_audio(music_path)
 g_menu()
