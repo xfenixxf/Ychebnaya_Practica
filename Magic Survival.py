@@ -238,7 +238,7 @@ class LightningAbility(Ability):
                     bolt_id = self.create_bolt(target)
                     if bolt_id:
                         damage_dealt = target.take_damage(self.damage)
-                        if damage_dealt or target.hp <= 0:
+                        if damage_dealt or target.enemy_hp <= 0:
                             enemies_killed += 1
                             xp_gained += target.xp_value
                             self.canvas.delete(target.id)
@@ -524,8 +524,8 @@ class Enemy:
 
     def take_damage(self, amount):
         """Обработка получения урона"""
-        self.hp -= amount
-        return self.hp <= 0
+        self.enemy_hp -= amount
+        return self.enemy_hp <= 0
 
     def generate_position(self, screen_width, screen_height):
         """Генерация начальной позиции врага"""
@@ -630,17 +630,16 @@ class Enemy:
 class NormalEnemy(Enemy):
     def init_enemy_characteristics(self):
         self.speed = 10
-        self.hp = 10
+        self.enemy_hp = 10
         self.xp_value = 1
         self.damage = 5
-        self.type = "normal"
         self.texture_enemy =resource_path(os.path.join("Textures", "Enemy1.jpg"))
 
 
 class EliteEnemy(Enemy):
     def init_enemy_characteristics(self):
         self.speed = 15
-        self.hp = 30
+        self.enemy_hp = 30
         self.xp_value = 3
         self.damage = 10
         self.texture_enemy = resource_path(os.path.join("Textures", "Enemy2.jpg"))
@@ -680,14 +679,13 @@ def record_menu(enemies_killed, restart_callback=None, exit_callback=None):  # �
     root77.overrideredirect(True)
     root77.protocol("WM_DELETE_WINDOW", lambda: None)
     klik_sound()
-    root2.update_idletasks()
-    parent_x = root2.winfo_x()
-    parent_y = root2.winfo_y()
-    parent_width = root2.winfo_width()
-    parent_height = root2.winfo_height()
-    x = parent_x + (parent_width - 500) // 2
-    y = parent_y + (parent_height - 300) // 2
-    root77.geometry(f"500x300+{x}+{y}")
+    window_width = 500
+    window_height = 300
+    screen_width = root77.winfo_screenwidth()
+    screen_height = root77.winfo_screenheight()
+    x = (screen_width - window_width) // 2
+    y = (screen_height - window_height) // 2
+    root77.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
     main_frame = Frame(root77, bg='white', bd=2, relief='solid')
     main_frame.pack(fill='both', expand=True, padx=10, pady=10)
@@ -735,6 +733,8 @@ def game(event=None):
     elite_spawn_time = 180
     elite_spawn_chance = 0.4
     max_enemes = 20
+    max_skills = 1
+    not_skills=[]
     playyr=resource_path(os.path.join("Textures", "player.jpg"))
     playerq = Image.open(playyr)
     playerq = playerq.resize((50, 50), Image.LANCZOS)
@@ -783,74 +783,96 @@ def game(event=None):
     game_loop_id = None
 
     def show_upgrade_choices():
-        nonlocal is_paused, pause_menu_items, upgrade_time, pause_start_time
+        nonlocal is_paused, pause_menu_items, upgrade_time, pause_start_time, max_skills, not_skills
         pause_start_time = time.time()
         upgrade_time += time.time() - pause_start_time
         is_paused = True
         root2.unbind('<Escape>')
+        remove_pause_menu()
 
-        overlay = canvas.create_rectangle(
-            0, 0, screen_width, screen_height,
-            fill="black", stipple="gray12"
-        )
-
+        overlay = canvas.create_rectangle(0, 0, screen_width, screen_height, fill="black", stipple="gray12")
         menu_frame = canvas.create_rectangle(
             screen_width // 2 - 300, screen_height // 2 - 200,
             screen_width // 2 + 300, screen_height // 2 + 200,
             fill="white", outline="black", width=3
         )
+        title = canvas.create_text(screen_width // 2, screen_height // 2 - 175, text="Выберите улучшение:",
+                                   font="Arial 26", fill="black")
 
-        title = canvas.create_text(
-            screen_width // 2, screen_height // 2 - 175,
-            text="Выберите улучшение:",
-            font="Arial 26", fill="black"
-        )
+        # Все способности игры
+        ALL_SKILLS = {
+            'lightning': {
+                'obj': lightning,
+                'unlock_text': "Разблокировать Молнию",
+                'upgrade_texts': {
+                    1: "Молния: число целей 2 -> 4",
+                    2: "Молния: урон 15 -> 30"
+                }
+            },
+            'explosive': {
+                'obj': explosive_shot,
+                'unlock_text': "Разблокировать Взрывной выстрел",
+                'upgrade_texts': {
+                    1: "Взрыв: радиус 125 -> 175",
+                    2: "Взрыв: урон 15 -> 30"
+                }
+            }
+        }
 
-        # Доступные улучшения
+        # Определение доступных улучшений
         upgrades = []
 
         shooter_upgrade = None
         if shooter.level < 3:
             if shooter.level == 1:
-                line1 = "Выстрел: Скорострельность: 1 -> 0.5"
-                line2 = "Урон: 5 -> 10 (Ур. 2/3)"
-                shooter_upgrade = (line1, line2, lambda: shooter.upgrade())
+                shooter_upgrade = (
+                    "Выстрел: Скорострельность: 1 -> 0.5",
+                    "Урон: 5 -> 10 (Ур. 2/3)",
+                    lambda: shooter.upgrade()
+                )
             else:
-                shooter_upgrade = ("Выстрел: Урон 10 -> 15 (Ур. 3/3)", lambda: shooter.upgrade())
+                shooter_upgrade = (
+                    "Выстрел: Урон 10 -> 15 (Ур. 3/3)",
+                    lambda: shooter.upgrade()
+                )
 
-        if not lightning.have and not explosive_shot.have:  # Первый выбор - случайная способность
-            if random.randint(1, 2) == 1:
-                if shooter_upgrade:
-                    upgrades.append(shooter_upgrade)
-                upgrades.append(("Разблокировать Молнию", lambda: lightning.upgrade()) if random.choice([True, False])
-                                else ("Разблокировать Взрывной выстрел", lambda: explosive_shot.upgrade()))
-            else:
-                upgrades.append(("Разблокировать Молнию", lambda: lightning.upgrade()) if random.choice([True, False])
-                                else ("Разблокировать Взрывной выстрел", lambda: explosive_shot.upgrade()))
-                if shooter_upgrade:
-                    upgrades.append(shooter_upgrade)
-        else:  # Улучшения для уже разблокированной способности
-            special_upgrades = []
-            if lightning.have and lightning.level < 3:
-                special_upgrades.append((
-                    f"Молния: {'число целей 2 -> 4' if lightning.level == 1 else 'урон 15 -> 30'} (Ур. {lightning.level + 1}/3)",
-                    lambda: lightning.upgrade()))
+        available_skills = []
+        for skill_name, skill_data in ALL_SKILLS.items():
+            skill_obj = skill_data['obj']
 
-            if explosive_shot.have and explosive_shot.level < 3:
-                special_upgrades.append((
-                    f"Взрыв: {'радиус 125 -> 175' if explosive_shot.level == 1 else 'урон 15 -> 30'} (Ур. {explosive_shot.level + 1}/3)",
-                    lambda: explosive_shot.upgrade()))
+            # Проверяем, не находится ли способность в списке исключенных
+            if any(ns['name'] == skill_name for ns in not_skills):
+                continue
 
-            if random.randint(1, 2) == 1:
-                if shooter_upgrade:
-                    upgrades.append(shooter_upgrade)
-                if special_upgrades:
-                    upgrades.append(random.choice(special_upgrades))
-            else:
-                if special_upgrades:
-                    upgrades.append(random.choice(special_upgrades))
-                if shooter_upgrade:
-                    upgrades.append(shooter_upgrade)
+            if not skill_obj.have:
+                available_skills.append({
+                    'name': skill_name,
+                    'text': skill_data['unlock_text'],
+                    'action': lambda obj=skill_obj: obj.upgrade(),
+                    'is_unlock': True
+                })
+            elif skill_obj.level < 3:
+                available_skills.append({
+                    'name': skill_name,
+                    'text': skill_data['upgrade_texts'][skill_obj.level],
+                    'action': lambda obj=skill_obj: obj.upgrade(),
+                    'is_unlock': False
+                })
+
+        if shooter_upgrade:
+            upgrades.append(shooter_upgrade)
+
+        if available_skills and max_skills < 2:
+            chosen = random.choice(available_skills)
+            upgrades.append((chosen['text'], chosen['action']))
+
+            not_skills.extend([
+                {'name': s['name'], 'is_unlock': s['is_unlock']}
+                for s in available_skills
+                if s['name'] != chosen['name']
+            ])
+        elif available_skills:
+            upgrades.append((random.choice(available_skills)['text'], random.choice(available_skills)['action']))
 
         if len(upgrades) > 2:
             upgrades = random.sample(upgrades, 2)
@@ -859,63 +881,62 @@ def game(event=None):
         option_texts = []
         for i, upgrade in enumerate(upgrades):
             y_pos = screen_height // 2 - 125 + i * 125
-            rect = canvas.create_rectangle(
+
+            option_rects.append(canvas.create_rectangle(
                 screen_width // 2 - 250, y_pos,
                 screen_width // 2 + 250, y_pos + 100,
                 outline="black", width=1
-            )
-            option_rects.append(rect)
+            ))
 
-            txt_num = canvas.create_text(
+            option_texts.append(canvas.create_text(
                 screen_width // 2 - 225, y_pos + 50,
                 text=f"{i + 1}", font="Arial 16", fill="black"
-            )
-            option_texts.append(txt_num)
+            ))
 
-            if shooter.level == 1 and len(upgrade) == 3 and upgrade[0].startswith("Выстрел:"):
+            if len(upgrade) == 3:
                 line1, line2, _ = upgrade
-                txt1 = canvas.create_text(
+                option_texts.append(canvas.create_text(
                     screen_width // 2, y_pos + 30,
                     text=line1, font="Arial 16", fill="black"
-                )
-                txt2 = canvas.create_text(
+                ))
+                option_texts.append(canvas.create_text(
                     screen_width // 2, y_pos + 70,
                     text=line2, font="Arial 16", fill="black"
-                )
-                option_texts.extend([txt1, txt2])
+                ))
             else:
-                text, action = upgrade[:2]
-                txt = canvas.create_text(
+                text, action = upgrade
+                option_texts.append(canvas.create_text(
                     screen_width // 2, y_pos + 50,
                     text=text, font="Arial 16", fill="black"
-                )
-                option_texts.append(txt)
+                ))
 
-        hint_text = "Нажмите "
-        hint_text += "1" if len(upgrades) >= 1 else ""
-        hint_text += " или 2" if len(upgrades) >= 2 else ""
-        hint_text += " для выбора"
-
+        hint_numbers = " или ".join(str(i + 1) for i in range(len(upgrades)))
         hint = canvas.create_text(
             screen_width // 2, screen_height // 2 + 170,
-            text=hint_text,
+            text=f"Нажмите {hint_numbers} для выбора",
             font="Arial 26", fill="black"
         )
 
         pause_menu_items = [overlay, menu_frame, title, hint] + option_rects + option_texts
 
         def handle_choice(event):
-            nonlocal is_paused, upgrade_time
+            nonlocal is_paused, upgrade_time, max_skills, not_skills
+
             if event.char == '1' and len(upgrades) >= 1:
                 if len(upgrades[0]) == 3:
                     upgrades[0][2]()
                 else:
                     upgrades[0][1]()
+                    if max_skills < 2 and any(u[0].startswith("Разблокировать") for u in upgrades[:1]):
+                        max_skills += 1
+
             elif event.char == '2' and len(upgrades) >= 2:
                 if len(upgrades[1]) == 3:
                     upgrades[1][2]()
                 else:
                     upgrades[1][1]()
+                    if max_skills < 2 and any(u[0].startswith("Разблокировать") for u in upgrades[1:2]):
+                        max_skills += 1
             else:
                 return
 
